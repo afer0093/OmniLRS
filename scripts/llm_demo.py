@@ -115,14 +115,13 @@ def yaw_to_quaternion(yaw_deg):
     return q  # [x, y, z, w]
 
 class AStarLLMNode(Node):
-    def __init__(self):
+    def __init__(self, image_saver):
         super().__init__('astar_llm_node')
         self.teleport_pub = self.create_publisher(PoseStamped, '/OmniLRS/Robots/Teleport', 10)
-        # infra2カメラ画像をサブスクライブ
+        self.spawn_pub = self.create_publisher(PoseStamped, '/OmniLRS/Robots/Spawn', 10)
         self.image_sub = self.create_subscription(
             Image, '/left_rgb/rgb', self.camera_cb, 10)
         self.bridge = CvBridge()
-
         self.current_pose = (5.0, 5.0)
         self.current_yaw = 0.0  # degrees
         self.goal_pose = (1.0, 1.0)
@@ -130,12 +129,12 @@ class AStarLLMNode(Node):
         self.images = {}
         self.last_pose = None
         self.move_wait_time = 10.0  # seconds for waiting after teleport for image to arrive
-
         self.timer = self.create_timer(1.0, self.astar_step)
         self.teleport_robot(*self.current_pose, self.current_yaw)
         self.get_logger().info('AStar LLM Node started.')
         self.image_ready = False
         self.latest_image = None
+        self.image_saver = image_saver  # ImageSaverインスタンス参照
 
     def teleport_robot(self, x, y, yaw_deg):
         msg = PoseStamped()
@@ -151,27 +150,49 @@ class AStarLLMNode(Node):
         self.teleport_pub.publish(msg)
         self.get_logger().info(f"Teleported robot to: ({x}, {y}), yaw={yaw_deg}")
 
+    def spawn_robot(self, x, y, yaw_deg):
+        msg = PoseStamped()
+        msg.header.frame_id = 'jackal:/workspace/omnilrs/assets/USD_Assets/robots/ros2_jackal_PhysX_vlp16.usd_stereo.usd'
+        msg.pose.position.x = float(x)
+        msg.pose.position.y = float(y)
+        msg.pose.position.z = 1.0
+        q = yaw_to_quaternion(yaw_deg)
+        msg.pose.orientation.x = float(q[0])
+        msg.pose.orientation.y = float(q[1])
+        msg.pose.orientation.z = float(q[2])
+        msg.pose.orientation.w = float(q[3])
+        self.spawn_pub.publish(msg)
+        self.get_logger().info(f"Spawned robot at: ({x}, {y}), yaw={yaw_deg}")
+
     def camera_cb(self, msg):
         self.latest_image = msg
         self.image_ready = True
 
     def get_image_for_orientation(self, x, y, yaw_deg):
-        self.image_ready = False
         self.teleport_robot(x, y, yaw_deg)
-        time.sleep(self.move_wait_time)
-        # Wait until image arrives
+        teleport_time = time.time()
+        wait_time = self.move_wait_time
+        time.sleep(wait_time)  # テレポート後に一定時間待つ
+        # ImageSaverのバッファからteleport_time+wait_time以降の画像を取得
+        target_time = teleport_time + wait_time
         waited = 0
-        while not self.image_ready and waited < self.move_wait_time * 5:
-            rclpy.spin_once(self, timeout_sec=0.2)
+        found = False
+        ts = None
+        msg = None
+        while waited < wait_time * 5:
+            ts, msg = self.image_saver.get_image_after(target_time)
+            if msg is not None:
+                found = True
+                break
+            time.sleep(0.2)
             waited += 0.2
-        if self.latest_image:
-            # 画像を保存
-            bridge = CvBridge()
-            cv_image = bridge.imgmsg_to_cv2(self.latest_image, desired_encoding='bgr8')
-            save_path = f"/workspace/omnilrs/tmp/capture_{x:.2f}_{y:.2f}_{yaw_deg:.0f}_{int(time.time())}.jpg"
-            PILImage.fromarray(cv_image).save(save_path)
-            self.get_logger().info(f"Saved image to {save_path}")
-            return self.latest_image
+        if found:
+            cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+            save_path = f"/workspace/omnilrs/tmp/left_rgb_{x:.2f}_{y:.2f}_{yaw_deg:.0f}_{int(ts)}.jpg"
+            pil_image = PILImage.fromarray(cv_image)
+            pil_image.save(save_path)
+            self.get_logger().info(f'Saved image: {save_path}')
+            return msg
         else:
             self.get_logger().warning("No image received after teleport/orient!")
             return None
@@ -196,40 +217,87 @@ class AStarLLMNode(Node):
             for dx, dy, yaw in directions
         ]
         costs = []
+        self.get_logger().info(f"[A*] Current pose: {self.current_pose}, yaw: {self.current_yaw}")
         for i, (nx, ny, yaw) in enumerate(neighbors):
+            self.get_logger().info(f"[A*] Checking direction {move_names[i]}: ({nx}, {ny}), yaw={yaw}")
             if (nx, ny) in self.visited:
+                self.get_logger().info(f"[A*] Already visited: ({nx}, {ny})")
                 costs.append((float('inf'), (nx, ny, yaw)))
                 continue
             prompt = f"You are controlling a moon rover. Analyze and describe the situation in the image, and determine if it is safe to proceed {move_names[i]}. Respond only with a single word: 'safe' or 'unsafe'."
             image = self.get_image_for_orientation(current[0], current[1], yaw)
             if image is None:
+                self.get_logger().warning(f"[A*] No image for direction {move_names[i]} ({nx}, {ny}, yaw={yaw})")
                 costs.append((float('inf'), (nx, ny, yaw)))
                 continue
+            self.get_logger().info(f"[A*] Got image for direction {move_names[i]} ({nx}, {ny}, yaw={yaw})")
             cost = llm_cost_estimate(image, prompt)
+            self.get_logger().info(f"[A*] LLM cost for direction {move_names[i]} (yaw={yaw}): {cost}")
             costs.append((cost, (nx, ny, yaw)))
-            self.get_logger().info(f"Direction {move_names[i]} (yaw={yaw}): cost={cost}")
 
         # Choose min cost, not visited
         min_cost, (next_x, next_y, next_yaw) = min(costs, key=lambda x: x[0])
+        self.get_logger().info(f"[A*] All costs: {costs}")
         if min_cost == float('inf'):
-            self.get_logger().info("No available moves! Stopping.")
+            self.get_logger().info("[A*] No available moves! Stopping.")
             self.destroy_node()
             return
 
-        self.get_logger().info(f"Move to ({next_x}, {next_y}) yaw={next_yaw} with cost {min_cost}")
+        self.get_logger().info(f"[A*] Next move: ({next_x}, {next_y}) yaw={next_yaw} with cost {min_cost}")
         self.teleport_robot(next_x, next_y, next_yaw)
+        self.get_logger().info(f"[A*] Teleported to: ({next_x}, {next_y}), yaw={next_yaw}")
         self.current_pose = (next_x, next_y)
         self.current_yaw = next_yaw
         self.visited.add((next_x, next_y))
         self.latest_image = None
+        # LLM出力後すぐに次のテレポート（タイマーで自動呼び出しされるため、ここでreturnしない）
+        self.get_logger().info(f"[A*] Step complete. Will check again on next timer tick.")
+
+class ImageSaver(Node):
+    def __init__(self):
+        super().__init__('image_saver')
+        self.subscription = self.create_subscription(
+            Image,
+            '/left_rgb/rgb',
+            self.listener_callback,
+            10)
+        self.bridge = CvBridge()
+        self.count = 0
+        self.image_buffer = []  # (timestamp, msg)
+
+    def listener_callback(self, msg):
+        now = time.time()
+        self.image_buffer.append((now, msg))
+        # バッファが大きくなりすぎないように最新20件だけ保持
+        if len(self.image_buffer) > 20:
+            self.image_buffer = self.image_buffer[-20:]
+        cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+        filename = f'/workspace/omnilrs/tmp/left_rgb_{self.count:04d}.jpg'
+        #pil_image = PILImage.fromarray(cv_image)
+        #pil_image.save(filename)
+        #self.get_logger().info(f'Saved image: {filename}')
+        self.count += 1
+
+    def get_image_after(self, target_time):
+        # target_time以降で最初の画像を返す
+        for ts, msg in self.image_buffer:
+            if ts >= target_time:
+                return ts, msg
+        return None, None
 
 def main(args=None):
     rclpy.init(args=args)
-    node = AStarLLMNode()
+    image_saver_node = ImageSaver()
+    astar_node = AStarLLMNode(image_saver_node)
+    from rclpy.executors import MultiThreadedExecutor
+    executor = MultiThreadedExecutor()
+    executor.add_node(astar_node)
+    executor.add_node(image_saver_node)
     try:
-        rclpy.spin(node)
+        executor.spin()
     finally:
-        node.destroy_node()
+        astar_node.destroy_node()
+        image_saver_node.destroy_node()
         rclpy.shutdown()
 
 if __name__ == '__main__':

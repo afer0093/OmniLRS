@@ -1,4 +1,4 @@
-FROM nvcr.io/nvidia/isaac-sim:2023.1.1
+FROM nvcr.io/nvidia/isaac-sim:4.5.0
 
 RUN /isaac-sim/python.sh -m pip install opencv-python omegaconf hydra-core
 
@@ -15,6 +15,9 @@ RUN apt-get update && apt-get install -q -y \
   gnupg2 \
   curl \
   libglib2.0-0 \
+  tmux \
+  vim \
+  nano \
   && rm -rf /var/lib/apt/lists/*
 
 
@@ -30,14 +33,19 @@ ENV ROS_DISTRO humble
 
 # install ros2 packages
 RUN apt-get update && apt-get install -y \
-  ros-humble-ros-core=0.10.0-1* \
+  ros-${ROS_DISTRO}-ros-core=0.10.0-1* \
   gdal-bin \
   libgdal-dev \
-  ros-humble-vision-msgs \
-  ros-humble-tf2-msgs \
+  ros-${ROS_DISTRO}-vision-msgs \
+  ros-${ROS_DISTRO}-tf2-msgs \
+  ros-${ROS_DISTRO}-teleop-twist-keyboard \
   g++ \
   wget \
+  python3-pip \
   && rm -rf /var/lib/apt/lists/*
+
+RUN pip3 install openai pillow opencv-python
+RUN apt-get update && apt-get install -y ros-humble-cv-bridge && rm -rf /var/lib/apt/lists/*
 
 RUN /isaac-sim/python.sh -m pip install --upgrade pip
 RUN /isaac-sim/python.sh -m pip install \
@@ -50,11 +58,21 @@ RUN /isaac-sim/python.sh -m pip install \
 RUN /isaac-sim/python.sh -m pip install gdal==$(gdal-config --version)
 
 # isaac ros2_bridge config
-ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/isaac-sim/exts/omni.isaac.ros2_bridge/humble/lib
+ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/isaac-sim/exts/omni.isaac.ros2_bridge/${ROS_DISTRO}/lib
 ENV RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 
-# setup entrypoint
-COPY ./entrypoint.sh /
+# For convenience:
+RUN echo "alias kk='clear'" >> /root/.bashrc
+RUN echo "alias tt='tmux new'" >> /root/.bashrc
+RUN echo "alias isaacpy='/isaac-sim/python.sh'" >> /root/.bashrc
+RUN echo "alias isaacapp='/isaac-sim/runapp.sh'" >> /root/.bashrc
+RUN echo "alias roskb='ros2 run teleop_twist_keyboard teleop_twist_keyboard'" >> /root/.bashrc
+RUN echo "source /opt/ros/$ROS_DISTRO/setup.bash" >> /root/.bashrc
+RUN echo "export PROMPT_COMMAND='history -a' " >> "/root/.bashrc"
+RUN echo "export HISTFILE=/commandhistory/.bash_history" >> "/root/.bashrc"
+RUN mkdir -p /commandhistory
 
+# Setup entrypoint
+COPY ./entrypoint.sh /
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["bash"]
