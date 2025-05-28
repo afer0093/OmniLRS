@@ -31,7 +31,7 @@ def compress_image(input_path, output_path, max_size=(800, 800), quality=80):
         img.thumbnail(max_size)
         img.save(output_path, format="JPEG", quality=quality)
 
-def llm_cost_estimate(image_msg, prompt):
+def llm_cost_estimate(image_msg, prompt, image_path=None):
     bridge = CvBridge()
     cv_image = bridge.imgmsg_to_cv2(image_msg, desired_encoding='bgr8')
     temp_path = "/tmp/current_cam.jpg"
@@ -94,13 +94,16 @@ def llm_cost_estimate(image_msg, prompt):
         judge = judge_response.choices[0].message.content.strip().lower()
         print(f"[LLM judge] {judge}")
 
+        if image_path:
+            print(f"[LLM][PAIR] image: {image_path}, description: {desc}, judge: {judge}")
+
         if "safe" in judge and not "unsafe" in judge:
-            return 1
+            return 1, desc, judge
         else:
-            return 100
+            return 100, desc, judge
     except Exception as e:
         print(f"LLM error: {e}")
-        return 100
+        return 100, "error", "error"
 
 def quaternion_from_euler(roll, pitch, yaw):
     qx = math.sin(roll/2) * math.cos(pitch/2) * math.cos(yaw/2) - math.cos(roll/2) * math.sin(pitch/2) * math.sin(yaw/2)
@@ -172,13 +175,13 @@ class AStarLLMNode(Node):
         self.teleport_robot(x, y, yaw_deg)
         teleport_time = time.time()
         wait_time = self.move_wait_time
-        time.sleep(wait_time)  # テレポート後に一定時間待つ
-        # ImageSaverのバッファからteleport_time+wait_time以降の画像を取得
+        time.sleep(wait_time)
         target_time = teleport_time + wait_time
         waited = 0
         found = False
         ts = None
         msg = None
+        save_path = None
         while waited < wait_time * 5:
             ts, msg = self.image_saver.get_image_after(target_time)
             if msg is not None:
@@ -192,10 +195,10 @@ class AStarLLMNode(Node):
             pil_image = PILImage.fromarray(cv_image)
             pil_image.save(save_path)
             self.get_logger().info(f'Saved image: {save_path}')
-            return msg
+            return msg, save_path
         else:
             self.get_logger().warning("No image received after teleport/orient!")
-            return None
+            return None, None
 
     def astar_step(self):
         current = self.current_pose
@@ -206,10 +209,10 @@ class AStarLLMNode(Node):
 
         # 4 directions: [yaw: 0, 90, 180, 270]
         directions = [
-            (0.1, 0,   0),   # east (yaw 0)
-            (0, 0.1,  90),   # north (yaw 90)
-            (-0.1, 0, 180),  # west (yaw 180)
-            (0, -0.1, 270),  # south (yaw 270)
+            (0.1, 0,   0),
+            (0, 0.1,  90),
+            (-0.1, 0, 180),
+            (0, -0.1, 270),
         ]
         move_names = ['east', 'north', 'west', 'south']
         neighbors = [
@@ -225,14 +228,19 @@ class AStarLLMNode(Node):
                 costs.append((float('inf'), (nx, ny, yaw)))
                 continue
             prompt = f"You are controlling a moon rover. Analyze and describe the situation in the image, and determine if it is safe to proceed {move_names[i]}. Respond only with a single word: 'safe' or 'unsafe'."
-            image = self.get_image_for_orientation(current[0], current[1], yaw)
+            image, image_path = self.get_image_for_orientation(current[0], current[1], yaw)
             if image is None:
                 self.get_logger().warning(f"[A*] No image for direction {move_names[i]} ({nx}, {ny}, yaw={yaw})")
                 costs.append((float('inf'), (nx, ny, yaw)))
                 continue
             self.get_logger().info(f"[A*] Got image for direction {move_names[i]} ({nx}, {ny}, yaw={yaw})")
-            cost = llm_cost_estimate(image, prompt)
+            cost, desc, judge = llm_cost_estimate(image, prompt, image_path)
             self.get_logger().info(f"[A*] LLM cost for direction {move_names[i]} (yaw={yaw}): {cost}")
+            # 画像名とLLM出力のペアをログ
+            self.get_logger().info(f"[A*][LLM] image: {image_path}, description: {desc}, judge: {judge}")
+            # ファイルに追記保存
+            with open("/workspace/omnilrs/tmp/llm_results.txt", "a") as f:
+                f.write(f"{image_path}\t{desc}\t{judge}\n")
             costs.append((cost, (nx, ny, yaw)))
 
         # Choose min cost, not visited
