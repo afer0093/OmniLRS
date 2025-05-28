@@ -31,3 +31,6 @@ assets/Terrains/SouthPole/
 *.tf
 *.bpc
 *.tpc
+
+**/.DS_Store
+
