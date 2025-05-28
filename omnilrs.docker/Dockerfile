@@ -42,7 +42,11 @@ RUN apt-get update && apt-get install -y \
   ros-${ROS_DISTRO}-teleop-twist-keyboard \
   g++ \
   wget \
+  python3-pip \
   && rm -rf /var/lib/apt/lists/*
+
+RUN pip3 install openai pillow opencv-python
+RUN apt-get update && apt-get install -y ros-humble-cv-bridge && rm -rf /var/lib/apt/lists/*
 
 RUN /isaac-sim/python.sh -m pip install --upgrade pip
 RUN /isaac-sim/python.sh -m pip install \
