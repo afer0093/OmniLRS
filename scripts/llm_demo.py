@@ -131,7 +131,7 @@ class AStarLLMNode(Node):
         self.visited = set()
         self.images = {}
         self.last_pose = None
-        self.move_wait_time = 10.0  # seconds for waiting after teleport for image to arrive
+        self.move_wait_time = 50.0  # seconds for waiting after teleport for image to arrive
         self.timer = self.create_timer(1.0, self.astar_step)
         self.teleport_robot(*self.current_pose, self.current_yaw)
         self.get_logger().info('AStar LLM Node started.')
@@ -144,7 +144,7 @@ class AStarLLMNode(Node):
         msg.header.frame_id = '/jackal'
         msg.pose.position.x = float(x)
         msg.pose.position.y = float(y)
-        msg.pose.position.z = 1.0
+        msg.pose.position.z = 0.5
         q = yaw_to_quaternion(yaw_deg)
         msg.pose.orientation.x = float(q[0])
         msg.pose.orientation.y = float(q[1])
