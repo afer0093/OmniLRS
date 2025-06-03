@@ -5,7 +5,7 @@ docker run --name isaac-sim-omnilrs-container -it --gpus all -e "ACCEPT_EULA=Y" 
 -e DISPLAY \
 -e "PRIVACY_CONSENT=Y" \
 -v ${PWD}:/workspace/omnilrs \
--v ${PWD}/../code:/workspace/omnilrs/code \
+-v ${PWD}/../grad_research:/workspace/omnilrs/code \
 -v /usr/share/nvidia:/usr/share/nvidia:ro \
 -v ~/docker/isaac-sim/cache/kit:/isaac-sim/kit/cache:rw \
 -v ~/docker/isaac-sim/cache/ov:/root/.cache/ov:rw \
