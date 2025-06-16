@@ -45,14 +45,10 @@ RUN apt-get update && apt-get install -y \
   python3-pip \
   && rm -rf /var/lib/apt/lists/*
 
-# まずNumPy 1.xを明示的にインストール
-RUN pip3 install "numpy<2"
-
-RUN pip3 install openai pillow opencv-python scipy
+RUN pip3 install openai pillow opencv-python
 RUN apt-get update && apt-get install -y ros-humble-cv-bridge && rm -rf /var/lib/apt/lists/*
 
 RUN /isaac-sim/python.sh -m pip install --upgrade pip
-RUN /isaac-sim/python.sh -m pip install "numpy<2"
 RUN /isaac-sim/python.sh -m pip install \
   skyfield \
   zfpy \
