@@ -1,6 +1,8 @@
 #!/bin/bash
 xhost +
 docker run --name isaac-sim-omnilrs-container -it --gpus all -e "ACCEPT_EULA=Y" --rm --network=host --ipc=host \
+--memory=48g \
+--shm-size=24g \
 -v $HOME/.Xauthority:/root/.Xauthority \
 -e DISPLAY \
 -e "PRIVACY_CONSENT=Y" \
