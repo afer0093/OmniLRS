@@ -40,6 +40,7 @@ RUN apt-get update && apt-get install -y \
   ros-${ROS_DISTRO}-vision-msgs \
   ros-${ROS_DISTRO}-tf2-msgs \
   ros-${ROS_DISTRO}-teleop-twist-keyboard \
+  ros-${ROS_DISTRO}-tf2-tools \
   g++ \
   wget \
   python3-pip \
