@@ -1,7 +1,6 @@
 FROM nvcr.io/nvidia/isaac-sim:4.5.0
 
 RUN /isaac-sim/python.sh -m pip install opencv-python omegaconf hydra-core
-RUN /isaac-sim/python.sh -m pip install "numpy<2"
 
 # setup timezone
 RUN echo 'Etc/UTC' > /etc/timezone && \
@@ -46,7 +45,7 @@ RUN apt-get update && apt-get install -y \
   python3-pip \
   && rm -rf /var/lib/apt/lists/*
 
-RUN pip3 install openai pillow opencv-python
+RUN pip3 install "numpy<2" openai pillow opencv-python
 RUN apt-get update && apt-get install -y ros-humble-cv-bridge && rm -rf /var/lib/apt/lists/*
 
 RUN /isaac-sim/python.sh -m pip install --upgrade pip
