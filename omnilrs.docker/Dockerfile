@@ -1,6 +1,7 @@
 FROM nvcr.io/nvidia/isaac-sim:4.5.0
 
 RUN /isaac-sim/python.sh -m pip install opencv-python omegaconf hydra-core
+RUN /isaac-sim/python.sh -m pip install "numpy<2"
 
 # setup timezone
 RUN echo 'Etc/UTC' > /etc/timezone && \
