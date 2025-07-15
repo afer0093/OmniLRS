@@ -45,7 +45,7 @@ RUN apt-get update && apt-get install -y \
   python3-pip \
   && rm -rf /var/lib/apt/lists/*
 
-RUN pip3 install "numpy<2" openai pillow opencv-python
+RUN pip3 install "numpy<2" openai pillow "opencv-python<4.9.0.0"
 RUN apt-get update && apt-get install -y ros-humble-cv-bridge && rm -rf /var/lib/apt/lists/*
 
 RUN /isaac-sim/python.sh -m pip install --upgrade pip
