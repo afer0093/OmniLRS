@@ -59,7 +59,8 @@ RUN /isaac-sim/python.sh -m pip install \
   numba \
   gdown \
   em \
-  lark
+  lark \
+  openai \
 
 RUN /isaac-sim/python.sh -m pip install gdal==$(gdal-config --version)
 
