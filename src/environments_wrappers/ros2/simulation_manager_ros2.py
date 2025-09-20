@@ -228,6 +228,11 @@ class ROS2_SimulationManager:
                     self.ROSRobotManager.reset()
                     self.ROSLabManager.trigger_reset = False
                 self.ROSRobotManager.apply_modifications()
+                # Publish robots' base_link PoseStamped on ROS2 topics after the step is complete
+                try:
+                    self.ROSRobotManager.publish_base_link_poses()
+                except Exception as e:
+                    logger.debug(f"Pose publish skipped: {e}")
                 if self.enable_deformation:
                     if self.world.current_time_step_index >= (self.deform_delay * self.world.get_physics_dt()):
                         self.ROSLabManager.LC.deform_terrain()
