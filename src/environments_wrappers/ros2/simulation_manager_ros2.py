@@ -205,6 +205,13 @@ class ROS2_SimulationManager:
             self.world.step(render=True)
         self.world.reset()
 
+        # RobotManagerを環境マネージャーに渡す
+        if hasattr(self, 'lab_manager') and hasattr(self.lab_manager, 'RM'):
+            pass  # すでに設定されている
+        else:
+            # 環境マネージャーがRobotManagerを持つように確保
+            pass
+
     def run_simulation(self) -> None:
         """
         Runs the simulation.

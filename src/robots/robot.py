@@ -24,6 +24,10 @@ from omni.isaac.core.utils.nucleus import get_assets_root_path
 from omni.isaac.dynamic_control import _dynamic_control
 from omni.isaac.core.prims import RigidPrim, RigidPrimView
 from pxr import Gf, UsdGeom, Usd
+from geometry_msgs.msg import PoseStamped
+import rospy
+import rclpy
+from rclpy.node import Node
 
 from WorldBuilders.pxr_utils import createXform, createObject, setDefaultOps
 from src.configurations.robot_confs import RobotManagerConf
@@ -204,6 +208,23 @@ class RobotManager:
             warnings.warn("Robot does not exist. Ignoring request.")
             print("available robots: ", self.robots.keys())
 
+    def publish_all_ground_truth_poses(self, node=None) -> None:
+        """
+        Publish ground truth poses for all robots
+
+        Args:
+            node: ROS2 node (for ROS2 only)
+        """
+        for robot_name, robot in self.robots.items():
+            try:
+                robot.publish_ground_truth_pose(node)
+            except Exception as e:
+                if not self.is_ROS2:
+                    rospy.logwarn(f"Failed to publish ground truth for {robot_name}: {e}")
+                else:
+                    if node:
+                        node.get_logger().warn(f"Failed to publish ground truth for {robot_name}: {e}")
+
 
 class Robot:
     """
@@ -240,6 +261,9 @@ class Robot:
         self.domain_id = int(domain_id)
         self.dc = _dynamic_control.acquire_dynamic_control_interface()
         self.root_body_id = None
+
+        # Ground truth pose publisher
+        self.setup_ground_truth_publisher()
 
     def get_root_rigid_body_path(self) -> None:
         """
@@ -345,6 +369,61 @@ class Robot:
                 self.reset_orientation[0],
             ],
         )
+
+    def setup_ground_truth_publisher(self) -> None:
+        """
+        Setup ground truth pose publisher for ROS1/ROS2
+        """
+        self.ground_truth_publisher = None
+        if hasattr(self, 'is_ROS2') and self.is_ROS2:
+            # ROS2の場合は後で初期化
+            pass
+        else:
+            # ROS1の場合
+            topic_name = f"{self.robot_name}/ground_truth_pose"
+            self.ground_truth_publisher = rospy.Publisher(
+                topic_name, PoseStamped, queue_size=10
+            )
+
+    def publish_ground_truth_pose(self, node=None) -> None:
+        """
+        Publish ground truth pose
+
+        Args:
+            node: ROS2 node (for ROS2 only)
+        """
+        if self.root_body_id is None:
+            self.get_root_rigid_body_path()
+
+        pose = self.dc.get_rigid_body_pose(self.root_body_id)
+
+        # PoseStampedメッセージを作成
+        pose_msg = PoseStamped()
+        pose_msg.header.stamp = rospy.Time.now() if not self.is_ROS2 else node.get_clock().now().to_msg()
+        pose_msg.header.frame_id = "world"
+
+        # Position
+        pose_msg.pose.position.x = float(pose.p[0])
+        pose_msg.pose.position.y = float(pose.p[1])
+        pose_msg.pose.position.z = float(pose.p[2])
+
+        # Orientation (quaternion)
+        pose_msg.pose.orientation.x = float(pose.r[0])
+        pose_msg.pose.orientation.y = float(pose.r[1])
+        pose_msg.pose.orientation.z = float(pose.r[2])
+        pose_msg.pose.orientation.w = float(pose.r[3])
+
+        if self.is_ROS2 and node:
+            # ROS2の場合
+            if not hasattr(self, 'ground_truth_publisher') or self.ground_truth_publisher is None:
+                topic_name = f"{self.robot_name}/ground_truth_pose"
+                self.ground_truth_publisher = node.create_publisher(
+                    PoseStamped, topic_name, 10
+                )
+            self.ground_truth_publisher.publish(pose_msg)
+        elif self.ground_truth_publisher:
+            # ROS1の場合
+            self.ground_truth_publisher.publish(pose_msg)
 
 
 class RobotRigidGroup:
