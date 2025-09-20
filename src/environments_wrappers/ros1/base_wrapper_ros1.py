@@ -87,12 +87,6 @@ class ROS_BaseManager:
         self.robot_subs.append(rospy.Subscriber("/OmniLRS/Robots/ResetAll", Empty, self.reset_robots, queue_size=1))
         self.modifications: List[Tuple[callable, dict]] = []
 
-        # Ground truth timer
-        self.ground_truth_timer = rospy.Timer(
-            rospy.Duration(0.1),  # 10Hzでpublish
-            self.publish_ground_truth_callback
-        )
-
     def periodic_update(self, dt: float) -> None:
         """
         Updates the lab.
@@ -298,13 +292,6 @@ class ROS_BaseManager:
 
         self.modifications.append([self.RM.reset_robots, {}])
 
-    def publish_ground_truth_callback(self, event) -> None:
-        """
-        Timer callback to publish ground truth poses
-        """
-        if hasattr(self, 'RM') and self.RM:
-            self.RM.publish_all_ground_truth_poses()
-
     def cleanScene(self):
         """
         Cleans the scene.
@@ -314,6 +301,4 @@ class ROS_BaseManager:
             sub.unregister()
         for sub in self.robot_subs:
             sub.unregister()
-        if hasattr(self, 'ground_truth_timer'):
-            self.ground_truth_timer.shutdown()
         rospy.signal_shutdown("Shutting down")

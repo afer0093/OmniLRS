@@ -56,12 +56,6 @@ class ROS_BaseManager(Node):
         )
         self.create_subscription(Float32, "/OmniLRS/LensFlare/SensorDiagonal", self.set_lens_flare_sensor_diagonal, 1)
 
-        # Ground truth timer
-        self.ground_truth_timer = self.create_timer(
-            0.1,  # 10Hzでpublish
-            self.publish_ground_truth_callback
-        )
-
         self.modifications: List[Tuple[callable, dict]] = []
 
     def periodic_update(self, dt: float) -> None:
@@ -230,10 +224,3 @@ class ROS_BaseManager(Node):
         """
 
         return []
-
-    def publish_ground_truth_callback(self) -> None:
-        """
-        Timer callback to publish ground truth poses
-        """
-        if hasattr(self, 'RM') and self.RM:
-            self.RM.publish_all_ground_truth_poses(self)
