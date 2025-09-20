@@ -204,22 +204,6 @@ class RobotManager:
             warnings.warn("Robot does not exist. Ignoring request.")
             print("available robots: ", self.robots.keys())
 
-    def get_robot_base_link_position(self, robot_name: str) -> np.ndarray:
-        """
-        指定ロボットのbase_linkのワールド座標系での位置を取得する。
-
-        Args:
-            robot_name (str): ロボット名。先頭に'/'が無い場合は付与する。
-
-        Returns:
-            np.ndarray: position[3]
-        """
-        if robot_name and robot_name[0] != "/":
-            robot_name = "/" + robot_name
-        if robot_name not in self.robots:
-            raise ValueError(f"Robot not found: {robot_name}. available={list(self.robots.keys())}")
-        return self.robots[robot_name].get_base_link_world_position()
-
 
 class Robot:
     """
@@ -361,40 +345,6 @@ class Robot:
                 self.reset_orientation[0],
             ],
         )
-
-    def get_link_world_pose(self, link_name: str) -> Tuple[np.ndarray, np.ndarray]:
-        """
-        指定リンクのワールド座標系での位置・姿勢を取得する。
-
-        Args:
-            link_name (str): 取得対象リンク名 (例: 'base_link')
-
-        Returns:
-            Tuple[np.ndarray, np.ndarray]: (position[3], orientation[4])
-        """
-        # ステージとPrimの存在確認
-        if not hasattr(self, "stage") or self.stage is None:
-            self.stage = omni.usd.get_context().get_stage()
-
-        prim_path = os.path.join(self.robot_path, link_name)
-        prim = self.stage.GetPrimAtPath(prim_path)
-        if prim is None or not prim.IsValid():
-            raise ValueError(f"Link prim not found: {prim_path}")
-
-        # 一時RigidPrimで取得
-        rp = RigidPrim(prim_path=prim_path, name=f"{self.robot_name}/{link_name}")
-        position, orientation = rp.get_world_pose()
-        return np.array(position), np.array(orientation)
-
-    def get_base_link_world_position(self) -> np.ndarray:
-        """
-        base_linkのワールド座標系での位置のみを取得する。
-
-        Returns:
-            np.ndarray: position[3]
-        """
-        p, _ = self.get_link_world_pose("base_link")
-        return p
 
 
 class RobotRigidGroup:

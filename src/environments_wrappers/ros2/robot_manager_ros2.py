@@ -6,7 +6,7 @@ __maintainer__ = "Antoine Richard"
 __email__ = "antoine.richard@uni.lu"
 __status__ = "development"
 
-from typing import Dict, List, Tuple
+from typing import List, Tuple
 
 from pxr import Gf
 
@@ -33,50 +33,6 @@ class ROS_RobotManager(Node):
 
         self.domain_id = 0
         self.modifications: List[Tuple[callable, dict]] = []
-        # Lazily created publishers for each robot's base_link pose
-        self._base_link_pose_pubs: Dict[str, any] = {}
-
-    def _get_pose_pub(self, robot_name: str):
-        """
-        Get or create a PoseStamped publisher for the robot's base_link.
-
-        Topic: /<robot_name>/base_link/pose (robot_name starts with "/")
-        """
-        # normalize robot name to start with '/'
-        if robot_name and robot_name[0] != "/":
-            robot_name = "/" + robot_name
-        if robot_name not in self._base_link_pose_pubs:
-            topic = f"{robot_name}/base_link/pose"
-            self._base_link_pose_pubs[robot_name] = self.create_publisher(PoseStamped, topic, 10)
-        return self._base_link_pose_pubs[robot_name]
-
-    def publish_base_link_poses(self) -> None:
-        """
-        Publish PoseStamped for each registered robot's base_link in world frame.
-        This should be called from the simulation thread after a world step is complete.
-        """
-        if not self.RM.robots:
-            return
-        now = self.get_clock().now().to_msg()
-        for robot_name, robot in list(self.RM.robots.items()):
-            try:
-                p, q = robot.get_link_world_pose("base_link")
-            except Exception as e:
-                # If link is missing or stage not ready, skip publishing for this robot
-                self.get_logger().debug(f"Skipping pose publish for {robot_name}: {e}")
-                continue
-            msg = PoseStamped()
-            msg.header.stamp = now
-            msg.header.frame_id = "world"
-            msg.pose.position.x = float(p[0])
-            msg.pose.position.y = float(p[1])
-            msg.pose.position.z = float(p[2])
-            msg.pose.orientation.x = float(q[0])
-            msg.pose.orientation.y = float(q[1])
-            msg.pose.orientation.z = float(q[2])
-            msg.pose.orientation.w = float(q[3])
-            pub = self._get_pose_pub(robot_name)
-            pub.publish(msg)
 
     def reset(self) -> None:
         """
