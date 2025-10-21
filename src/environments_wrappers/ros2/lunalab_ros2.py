@@ -11,9 +11,17 @@ from src.environments_wrappers.ros2.base_wrapper_ros2 import ROS_BaseManager
 from src.environments.lunalab import LunalabController
 
 # Loads ROS2 dependent libraries
-from std_msgs.msg import Bool, Float32, ColorRGBA, Int32
+from std_msgs.msg import Bool, Float32, ColorRGBA, Int32, Header
 from geometry_msgs.msg import Pose
+from sensor_msgs.msg import Image, CameraInfo
+from cv_bridge import CvBridge
 import rclpy
+import numpy as np
+import cv2
+from omni.isaac.core.utils.extensions import enable_extension
+
+# Enable Replicator extension for camera rendering
+enable_extension("omni.replicator.core")
 
 
 class ROS_LunalabManager(ROS_BaseManager):
@@ -38,6 +46,14 @@ class ROS_LunalabManager(ROS_BaseManager):
         self.LC.load()
         self.trigger_reset = False
 
+        # Initialize camera-related attributes
+        self.bridge = CvBridge()
+        self.topview_camera_path = "/Lunalab/Cameras/TopView"
+        self.image_publisher = self.create_publisher(Image, "/OmniLRS/Lunalab/TopView/image_raw", 1)
+        self.camera_info_publisher = self.create_publisher(CameraInfo, "/OmniLRS/Lunalab/TopView/camera_info", 1)
+        self.camera_frame_id = "lunalab_topview_camera"
+        self.sequence_counter = 0
+
         self.create_subscription(Bool, "/OmniLRS/Projector/TurnOn", self.set_projector_on, 1)
         self.create_subscription(Float32, "/OmniLRS/Projector/Intensity", self.set_projector_intensity, 1)
         self.create_subscription(Float32, "/OmniLRS/Projector/Radius", self.set_projector_radius, 1)
@@ -50,7 +66,13 @@ class ROS_LunalabManager(ROS_BaseManager):
         self.create_subscription(Int32, "/OmniLRS/Terrain/RandomizeRocks", self.randomize_rocks, 1)
 
     def periodic_update(self, dt: float) -> None:
-        pass
+        """
+        Periodic update to publish camera images.
+
+        Args:
+            dt (float): Time step.
+        """
+        self.publish_topview_camera_image()
 
     def reset(self) -> None:
         """
@@ -217,3 +239,97 @@ class ROS_LunalabManager(ROS_BaseManager):
         assert data > 0, "The number of rocks must be greater than 0."
         self.modifications.append([self.LC.randomize_rocks, {"num": data}])
         self.trigger_reset = True
+
+    def get_camera_image_from_prim(self):
+        """
+        Retrieves the camera image from the specified prim path.
+        Uses Omniverse Replicator API to render and capture images.
+
+        Returns:
+            np.ndarray: RGB image data from the TopView camera.
+        """
+        try:
+            # Import camera helper
+            from src.environments_wrappers.ros2.camera_helper import get_rgb_image_from_viewport
+
+            # Capture RGB image from TopView camera
+            image_data = get_rgb_image_from_viewport(
+                prim_path=self.topview_camera_path,
+                width=512,
+                height=512,
+            )
+            
+            return image_data
+
+        except Exception as e:
+            self.get_logger().warn(f"Failed to capture camera image: {str(e)}")
+            return None
+
+    def publish_topview_camera_image(self) -> None:
+        """
+        Publishes the TopView camera image as a ROS Image message.
+        """
+        try:
+            # Get image from camera prim
+            image_data = self.get_camera_image_from_prim()
+            
+            if image_data is None:
+                return
+
+            # Convert numpy array to ROS Image message
+            current_time = self.get_clock().now()
+            header = Header()
+            header.stamp = current_time.to_msg()
+            header.frame_id = self.camera_frame_id
+            header.seq = self.sequence_counter
+            self.sequence_counter += 1
+
+            # Convert BGR to RGB if needed and create ROS message
+            ros_image = self.bridge.cv2_to_imgmsg(
+                cv2.cvtColor(image_data, cv2.COLOR_BGR2RGB),
+                encoding="rgb8",
+                header=header,
+            )
+
+            # Publish image
+            self.image_publisher.publish(ros_image)
+
+            # Optionally publish camera info
+            self.publish_camera_info(current_time, header)
+
+        except Exception as e:
+            self.get_logger().warn(f"Error in publish_topview_camera_image: {str(e)}")
+
+    def publish_camera_info(self, timestamp, header) -> None:
+        """
+        Publishes the camera calibration info.
+
+        Args:
+            timestamp: ROS timestamp
+            header: ROS header
+        """
+        try:
+            camera_info = CameraInfo()
+            camera_info.header = header
+
+            # Set camera intrinsics (these are default values, adjust as needed)
+            camera_info.width = 512
+            camera_info.height = 512
+            camera_info.distortion_model = "plumb_bob"
+
+            # Camera matrix (fx, fy, cx, cy)
+            fx = 512.0  # focal length in pixels
+            fy = 512.0
+            cx = 256.0  # principal point
+            cy = 256.0
+
+            camera_info.K = [fx, 0, cx, 0, fy, cy, 0, 0, 1]
+            camera_info.P = [fx, 0, cx, 0, 0, fy, cy, 0, 0, 0, 1, 0]
+            camera_info.R = [1, 0, 0, 0, 1, 0, 0, 0, 1]
+
+            camera_info.distortion = [0, 0, 0, 0, 0]
+
+            self.camera_info_publisher.publish(camera_info)
+
+        except Exception as e:
+            self.get_logger().warn(f"Error in publish_camera_info: {str(e)}")
