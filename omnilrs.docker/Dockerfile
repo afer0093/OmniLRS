@@ -1,4 +1,4 @@
-FROM nvcr.io/nvidia/isaac-sim:4.5.0
+FROM nvcr.io/nvidia/isaac-sim:4.5.0-full
 
 # upgrade pip in isaac-sim python
 RUN /isaac-sim/python.sh -m pip install --upgrade pip
