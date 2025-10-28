@@ -63,7 +63,8 @@ RUN /isaac-sim/python.sh -m pip install \
   numba \
   gdown \
   em \
-  lark
+  lark \
+  open3d
 
 RUN /isaac-sim/python.sh -m pip install gdal==$(gdal-config --version)
 
@@ -81,6 +82,7 @@ RUN pip3 install \
   gdown \
   em \
   lark \
+  open3d \
   gdal==$(gdal-config --version)
 
 # isaac ros2_bridge config
