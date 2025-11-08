@@ -11,12 +11,19 @@ import carb
 import omni
 
 from src.configurations.rendering_confs import FlaresConf, ChromaticAberrationsConf, MotionBlurConf
+from omni.kit.viewport.utility import get_active_viewport
 
 
 # ==============================================================================
 # Renderer Control
 # ==============================================================================
 
+def _reset_rtx_renderer():
+    vp = get_active_viewport()
+    # RTX レンダラを完全解放
+    vp.set_renderer_plugin(None)
+    # RTX レンダラを再ロード
+    vp.set_renderer_plugin("rtx")
 
 def enable_RTX_real_time(**kwargs) -> None:
     """
@@ -26,6 +33,7 @@ def enable_RTX_real_time(**kwargs) -> None:
         data (int, optional): Not used. Defaults to 0.
     """
 
+    _reset_rtx_renderer()
     action_registry = omni.kit.actions.core.get_action_registry()
     action = action_registry.get_action("omni.kit.viewport.actions", "set_renderer_rtx_realtime")
     action.execute()
@@ -39,6 +47,7 @@ def enable_RTX_interactive(*kwargs) -> None:
         data (int, optional): Not used. Defaults to 0.
     """
 
+    _reset_rtx_renderer()
     action_registry = omni.kit.actions.core.get_action_registry()
     action = action_registry.get_action("omni.kit.viewport.actions", "set_renderer_rtx_pathtracing")
     action.execute()
