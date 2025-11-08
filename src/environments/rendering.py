@@ -11,19 +11,21 @@ import carb
 import omni
 
 from src.configurations.rendering_confs import FlaresConf, ChromaticAberrationsConf, MotionBlurConf
-from omni.kit.viewport.utility import get_active_viewport
+import omni.kit.viewport_legacy as vp_legacy
 
 
 # ==============================================================================
 # Renderer Control
 # ==============================================================================
 
+def get_vp():
+    # Main viewport
+    return vp_legacy.get_viewport_interface().get_viewport_window(None)
+
 def _reset_rtx_renderer():
-    vp = get_active_viewport()
-    # RTX レンダラを完全解放
-    vp.set_renderer_plugin(None)
-    # RTX レンダラを再ロード
-    vp.set_renderer_plugin("rtx")
+    vp = get_vp()
+    vp.set_renderer_plugin(None)   # 完全解放
+    vp.set_renderer_plugin("rtx")  # RTX 再ロード
 
 def enable_RTX_real_time(**kwargs) -> None:
     """
